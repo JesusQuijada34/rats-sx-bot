@@ -13,24 +13,24 @@ from telegram.ext import (
 )
 from database import db
 
-# Configuración básica
-TOKEN = os.getenv("TELEGRAM_TOKEN", "TU_TOKEN_AQUI")
+# Configuración básica - Todas las variables son externas para evitar vulnerabilidades
+TOKEN = os.getenv("TELEGRAM_TOKEN")
 # Dueño único (OWNER_ID)
-OWNER_ID = int(os.getenv("ADMIN_ID", 6503848135))
-# Lista de administradores (Staff) - Incluimos a @cine_elite si se proporciona su ID
+OWNER_ID_STR = os.getenv("OWNER_ID")
+OWNER_ID = int(OWNER_ID_STR) if OWNER_ID_STR and OWNER_ID_STR.isdigit() else None
+
+# Lista de administradores (Staff)
 ADMIN_IDS_STR = os.getenv("ADMIN_IDS", "")
 ADMIN_IDS = [int(i.strip()) for i in ADMIN_IDS_STR.split(",") if i.strip().isdigit()]
 
-# Para efectos de la tarea, si no hay IDs, asumiremos una lista vacía. 
-# @cine_elite debería añadirse vía variable de entorno ADMIN_IDS.
-
-CANAL_URL = "https://t.me/Ratssx"
-GRUPO_URL = "https://t.me/+S3afbQ2tUqQwYWMx"
+CANAL_URL = os.getenv("CANAL_URL", "https://t.me/Ratssx")
+GRUPO_URL = os.getenv("GRUPO_URL", "https://t.me/+S3afbQ2tUqQwYWMx")
 
 def is_owner(user_id):
     return user_id == OWNER_ID
 
 def is_staff(user_id):
+    # El dueño también tiene permisos de staff, pero se maneja por separado en la visualización
     return user_id in ADMIN_IDS or user_id == OWNER_ID
 
 def to_unicode_bold(text):
@@ -45,7 +45,9 @@ def to_unicode_bold(text):
     return "".join(bold_map.get(c, c) for c in text)
 
 def get_all_admins():
-    admins = [OWNER_ID]
+    admins = []
+    if OWNER_ID:
+        admins.append(OWNER_ID)
     for aid in ADMIN_IDS:
         if aid not in admins:
             admins.append(aid)
@@ -99,16 +101,18 @@ async def show_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text)
 
 async def show_staff(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Obtener información del Owner
-    try:
-        owner_chat = await context.bot.get_chat(OWNER_ID)
-        owner_username = f"@{owner_chat.username}" if owner_chat.username else owner_chat.first_name
-    except Exception:
-        owner_username = "Dueño"
+    # Obtener información del Owner vía API de Telegram
+    owner_username = "No configurado"
+    if OWNER_ID:
+        try:
+            owner_chat = await context.bot.get_chat(OWNER_ID)
+            owner_username = f"@{owner_chat.username}" if owner_chat.username else owner_chat.first_name
+        except Exception:
+            owner_username = "Dueño (No localizable)"
 
-    # Construir lista de Staff
+    # Construir lista de Staff (Excluyendo al Owner de esta lista)
     staff_list = []
-    # Filtrar OWNER_ID de ADMIN_IDS para no duplicar si está en ambos
+    # Filtrar OWNER_ID de ADMIN_IDS para que NO aparezca en la lista de colaboradores (staff)
     display_staff_ids = [aid for aid in ADMIN_IDS if aid != OWNER_ID]
     
     for staff_id in display_staff_ids:
@@ -119,10 +123,10 @@ async def show_staff(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             staff_list.append(f"Staff [{staff_id}]")
     
-    # Formatear el mensaje según la plantilla solicitada
+    # Formatear el mensaje
     text = "ADMINS DEL BOT\n\n"
     text += f"⚜️{to_unicode_bold('OWNER')}\n"
-    text += f"└  {owner_username} [{OWNER_ID}]\n\n"
+    text += f"└  {owner_username} [{OWNER_ID if OWNER_ID else '???'}]\n\n"
     text += f"👮‍♂️ {to_unicode_bold('STAFF')}\n"
     
     if not staff_list:
@@ -145,9 +149,6 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ No tienes permisos para ver las estadísticas.")
         return
     
-    # Aquí iría la lógica de estadísticas reales de la DB
-    # Por ahora mostramos algo básico basado en lo que hay en database.py
-    # En una implementación real se añadiría un método get_global_stats a la DB
     await update.message.reply_text("📊 Estadísticas Globales:\n(Funcionalidad limitada a Staff)")
 
 async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -225,7 +226,6 @@ async def get_pruebas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['reporter_name'] = update.effective_user.username or update.effective_user.first_name
     context.user_data['reporter_id'] = update.effective_user.id
     
-    # Enviar a todos los administradores (Owner y Staff) para moderación
     admin_text = (
         "🔔 NUEVO REPORTE PARA MODERACIÓN\n\n"
         f"Rata: {context.user_data['rata_id']}\n"
@@ -242,12 +242,10 @@ async def get_pruebas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    # Guardar temporalmente los datos en context.bot_data
     report_key = f"report_{update.effective_user.id}"
     context.bot_data[report_key] = context.user_data.copy()
-    context.bot_data[report_key]['admin_messages'] = [] # Para rastrear los mensajes enviados a los admins
+    context.bot_data[report_key]['admin_messages'] = []
 
-    # Enviar a todos los admins
     for admin_id in get_all_admins():
         try:
             msg = await context.bot.send_photo(
@@ -268,7 +266,6 @@ async def moderation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_id = update.effective_user.id
     admin_name = update.effective_user.username or update.effective_user.first_name
 
-    # Verificar si es Staff o Owner
     if not is_staff(user_id):
         await query.answer("❌ No tienes permisos para gestionar reportes.", show_alert=True)
         return
@@ -279,7 +276,6 @@ async def moderation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     if not report_data:
         await query.answer("Error: Datos del reporte no encontrados o ya procesados.")
-        # Intentar limpiar el mensaje actual si los datos ya no existen
         try:
             await query.edit_message_caption("⚠️ Este reporte ya ha sido gestionado o los datos han expirado.")
         except:
@@ -287,12 +283,8 @@ async def moderation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     if action == "approve":
-        # Extraer datos para la DB
-        # Nota: En una implementación real, buscaríamos el ID real de la rata si se pasó un username
-        # Aquí simplificamos asumiendo que el ID es el que se pasó o se gestionará manualmente
         try:
             rata_identifier = report_data['rata_id']
-            # Simulación de obtención de datos reales si es posible (en producción usaría getChat)
             rata_id = rata_identifier if rata_identifier.isdigit() else 0 
             rata_name = "Desconocido"
             rata_username = rata_identifier.replace("@", "") if not rata_identifier.isdigit() else "N/A"
@@ -308,7 +300,6 @@ async def moderation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                 proof_photo_id=report_data['foto_id']
             )
             
-            # Notificar al canal y grupo
             public_text = (
                 "🔴RATA AÑADIDA A SX RATS 🔴\n"
                 f"🔖Reporte ID #{report_id}\n\n"
@@ -324,13 +315,19 @@ async def moderation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                 f"└ Reportó @{report_data['reporter_name']}"
             )
             
-            await context.bot.send_photo(chat_id=CANAL_URL.split("/")[-1], photo=report_data['foto_id'], caption=public_text)
-            # Nota: El grupo requiere que el bot esté dentro y tengamos el ID real
-            # await context.bot.send_photo(chat_id=GRUPO_ID, photo=report_data['foto_id'], caption=public_text)
+            # Notificar al canal
+            try:
+                # Intentamos extraer el chat_id del canal desde la URL si es posible
+                # En producción esto debería ser una variable de entorno con el ID real (ej: -100...)
+                channel_id = CANAL_URL.split("/")[-1]
+                if not channel_id.startswith("@"):
+                    channel_id = "@" + channel_id
+                await context.bot.send_photo(chat_id=channel_id, photo=report_data['foto_id'], caption=public_text)
+            except Exception as e:
+                logging.error(f"Error enviando al canal: {e}")
             
             await context.bot.send_message(chat_id=reporter_id, text="✅ Tu reporte ha sido aceptado y publicado.")
             
-            # Actualizar todos los mensajes de los admins en tiempo real
             status_text = f"✅ Reporte Aceptado por @{admin_name}"
             for admin_id, msg_id in report_data.get('admin_messages', []):
                 try:
@@ -338,19 +335,18 @@ async def moderation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                         chat_id=admin_id,
                         message_id=msg_id,
                         caption=f"{status_text}\n\nRata: {report_data['rata_id']}\nContexto: {report_data['contexto']}\nBanca: {report_data['banca']}",
-                        reply_markup=None # Quitar botones una vez gestionado
+                        reply_markup=None
                     )
                 except Exception:
                     pass
             
         except Exception as e:
+            logging.error(f"Error procesando aprobación: {e}")
             await query.answer(f"Error al procesar: {str(e)}")
             return
-            
-    else:
-        await context.bot.send_message(chat_id=reporter_id, text="🏁 El reporte ha sido concluido.")
-        
-        # Actualizar todos los mensajes de los admins en tiempo real
+
+    elif action == "reject":
+        await context.bot.send_message(chat_id=reporter_id, text="🏁 Tu reporte ha sido revisado y concluido sin publicación.")
         status_text = f"🏁 Reporte Concluido por @{admin_name}"
         for admin_id, msg_id in report_data.get('admin_messages', []):
             try:
@@ -358,45 +354,43 @@ async def moderation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                     chat_id=admin_id,
                     message_id=msg_id,
                     caption=f"{status_text}\n\nRata: {report_data['rata_id']}\nContexto: {report_data['contexto']}\nBanca: {report_data['banca']}",
-                    reply_markup=None # Quitar botones una vez gestionado
+                    reply_markup=None
                 )
             except Exception:
                 pass
 
-    if report_key in context.bot_data:
-        del context.bot_data[report_key]
-    await query.answer()
+    # Limpiar datos del reporte
+    context.bot_data.pop(report_key, None)
+    await query.answer("Acción completada.")
 
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Proceso cancelado.")
-    return ConversationHandler.END
+def main():
+    if not TOKEN:
+        print("Error: No se ha proporcionado TELEGRAM_TOKEN en las variables de entorno.")
+        return
 
-if __name__ == '__main__':
     application = ApplicationBuilder().token(TOKEN).build()
     
-    # Handlers
-    application.add_handler(CommandHandler('start', start))
-    application.add_handler(CommandHandler('comandos', show_commands))
-    application.add_handler(CommandHandler('info', info_cmd))
-    application.add_handler(CommandHandler('staff', show_staff))
-    application.add_handler(CommandHandler('admins', show_staff))
-    application.add_handler(CommandHandler('stats', stats_cmd))
-    application.add_handler(CallbackQueryHandler(show_commands, pattern="show_commands"))
-    application.add_handler(CallbackQueryHandler(show_staff, pattern="show_staff"))
-    application.add_handler(CallbackQueryHandler(moderation_callback, pattern="^(approve|reject)_"))
-    
-    # FSM Report
-    report_handler = ConversationHandler(
-        entry_points=[CommandHandler('report', start_report)],
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('Report', start_report)],
         states={
             ID_RATA: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_id_rata)],
             CONTEXTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_contexto)],
             BANCA: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_banca)],
             PRUEBAS: [MessageHandler(filters.PHOTO, get_pruebas)],
         },
-        fallbacks=[CommandHandler('cancel', cancel)]
+        fallbacks=[],
     )
-    application.add_handler(report_handler)
     
-    print("Bot Rats Sx iniciado...")
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("info", info_cmd))
+    application.add_handler(CommandHandler("stats", stats_cmd))
+    application.add_handler(conv_handler)
+    application.add_handler(CallbackQueryHandler(show_commands, pattern="show_commands"))
+    application.add_handler(CallbackQueryHandler(show_staff, pattern="show_staff"))
+    application.add_handler(CallbackQueryHandler(moderation_callback, pattern="^(approve|reject)_"))
+    
+    print("Bot iniciado...")
     application.run_polling()
+
+if __name__ == '__main__':
+    main()
