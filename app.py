@@ -27,6 +27,17 @@ OWNER_ID = int(os.getenv("ADMIN_ID", 6503848135))
 CANAL_URL = os.getenv("CANAL_URL", "https://t.me/Ratssx")
 GRUPO_URL = os.getenv("GRUPO_URL", "https://t.me/+S3afbQ2tUqQwYWMx")
 
+def to_unicode_bold(text):
+    bold_map = {
+        'A': '𝐀', 'B': '𝐁', 'C': '𝐂', 'D': '𝐃', 'E': '𝐄', 'F': '𝐅', 'G': '𝐆', 'H': '𝐇', 'I': '𝐈', 
+        'J': '𝐉', 'K': '𝐊', 'L': '𝐋', 'M': '𝐌', 'N': '𝐍', 'O': '𝐎', 'P': '𝐏', 'Q': '𝐐', 'R': '𝐑', 
+        'S': '𝐒', 'T': '𝐓', 'U': '𝐔', 'V': '𝐕', 'W': '𝐖', 'X': '𝐗', 'Y': '𝐘', 'Z': '𝐙',
+        'a': '𝐚', 'b': '𝐛', 'c': '𝐜', 'd': '𝐝', 'e': '𝐞', 'f': '𝐟', 'g': '𝐠', 'h': '𝐡', 'i': '𝐢', 
+        'j': '𝐣', 'k': '𝐤', 'l': '𝐥', 'm': '𝐦', 'n': '𝐧', 'o': '𝐨', 'p': '𝐩', 'q': '𝐪', 'r': '𝐫', 
+        's': '𝐬', 't': '𝐭', 'u': '𝐮', 'v': '𝐯', 'w': '𝐰', 'x': '𝐱', 'y': '𝐲', 'z': '𝐳'
+    }
+    return "".join(bold_map.get(c, c) for c in text)
+
 def get_chat_id(env_var):
     val = os.getenv(env_var)
     if val and (val.startswith("-") or val.isdigit()):
@@ -73,10 +84,45 @@ async def show_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else: await update.message.reply_text(text)
 
 async def show_staff(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = f"Staff 👤\nColaboradores Oficiales:\n{STAFF_INFO}\n\nDueño: @PlagaVT"
+    # Obtener información del Owner
+    try:
+        owner_chat = await context.bot.get_chat(OWNER_ID)
+        owner_username = f"@{owner_chat.username}" if owner_chat.username else owner_chat.first_name
+    except Exception:
+        owner_username = "Dueño"
+
+    # Construir lista de Staff
+    staff_list = []
+    # Filtrar OWNER_ID de ADMIN_IDS para no duplicar si está en ambos
+    display_staff_ids = [aid for aid in ADMIN_IDS if aid != OWNER_ID]
+    
+    for staff_id in display_staff_ids:
+        try:
+            staff_chat = await context.bot.get_chat(staff_id)
+            staff_username = f"@{staff_chat.username}" if staff_chat.username else staff_chat.first_name
+            staff_list.append(f"{staff_username} [{staff_id}]")
+        except Exception:
+            staff_list.append(f"Staff [{staff_id}]")
+    
+    # Formatear el mensaje según la plantilla solicitada
+    text = "ADMINS DEL BOT\n\n"
+    text += f"⚜️{to_unicode_bold('OWNER')}\n"
+    text += f"└  {owner_username} [{OWNER_ID}]\n\n"
+    text += f"👮‍♂️ {to_unicode_bold('STAFF')}\n"
+    
+    if not staff_list:
+        text += "└  (Sin staff configurado)"
+    else:
+        for i, staff_info in enumerate(staff_list):
+            prefix = "├ " if i < len(staff_list) - 1 else "└ "
+            text += f"{prefix}{staff_info}\n"
+
     query = update.callback_query
-    if query: await query.answer(); await query.edit_message_text(text)
-    else: await update.message.reply_text(text)
+    if query:
+        await query.answer()
+        await query.edit_message_text(text)
+    else:
+        await update.message.reply_text(text)
 
 async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
