@@ -22,7 +22,7 @@ load_dotenv()
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 # Soporte para múltiples IDs de Admin (separados por comas)
 ADMIN_IDS = [int(i.strip()) for i in os.getenv("ADMIN_IDS", "0").split(",") if i.strip().isdigit()]
-STAFF_INFO = os.getenv("STAFF_INFO", "@PlagaVT, @Edwxzz")
+STAFF_INFO = os.getenv("STAFF_INFO", "@PlagaVT, @Edwxzz, @jesusquijada34")
 CANAL_URL = os.getenv("CANAL_URL", "https://t.me/Ratssx")
 GRUPO_URL = os.getenv("GRUPO_URL", "https://t.me/+S3afbQ2tUqQwYWMx")
 
