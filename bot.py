@@ -15,10 +15,20 @@ from database import db
 
 # Configuración básica
 TOKEN = os.getenv("TELEGRAM_TOKEN", "TU_TOKEN_AQUI")
-ADMIN_ID = 6503848135  # Basado en @PlagaVT, necesitarás el ID real. Usaré un placeholder si no lo tengo.
-ADMIN_USERNAME = "@PlagaVT"
+# Dueño único (ADMIN_ID)
+ADMIN_ID = int(os.getenv("ADMIN_ID", 6503848135))
+# Lista de administradores (Staff)
+ADMIN_IDS_STR = os.getenv("ADMIN_IDS", "")
+ADMIN_IDS = [int(i.strip()) for i in ADMIN_IDS_STR.split(",") if i.strip().isdigit()]
+
 CANAL_URL = "https://t.me/Ratssx"
 GRUPO_URL = "https://t.me/+S3afbQ2tUqQwYWMx"
+
+def is_owner(user_id):
+    return user_id == ADMIN_ID
+
+def is_staff(user_id):
+    return user_id in ADMIN_IDS or user_id == ADMIN_ID
 
 # Estados de la FSM para reportes
 ID_RATA, CONTEXTO, BANCA, PRUEBAS, MODERACION = range(5)
@@ -68,13 +78,54 @@ async def show_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text)
 
 async def show_staff(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = f"Staff 👤\nAdministrador/Dueño: {ADMIN_USERNAME}"
+    # Obtener información del Owner
+    try:
+        owner_chat = await context.bot.get_chat(ADMIN_ID)
+        owner_username = f"@{owner_chat.username}" if owner_chat.username else owner_chat.first_name
+    except Exception:
+        owner_username = "Dueño"
+
+    # Construir lista de Staff
+    staff_list = []
+    for staff_id in ADMIN_IDS:
+        try:
+            staff_chat = await context.bot.get_chat(staff_id)
+            staff_username = f"@{staff_chat.username}" if staff_chat.username else staff_chat.first_name
+            staff_list.append(f"{staff_username} [{staff_id}]")
+        except Exception:
+            staff_list.append(f"Staff [{staff_id}]")
+
+    # Formatear el mensaje según la plantilla
+    text = "𝙋𝙡𝙖𝙜𝙖 𝙎𝙥𝙖𝙢 𝘾𝙉:\n\n"
+    text += "ADMINS DEL BOT \n\n"
+    text += "⚜️OWNER\n"
+    text += f"└  {owner_username} [{ADMIN_ID}]\n\n"
+    text += "👮‍♂️ STAFF\n"
+    
+    if not staff_list:
+        text += "└ (Sin staff configurado)"
+    else:
+        for i, staff_info in enumerate(staff_list):
+            prefix = "├ " if i < len(staff_list) - 1 else "└ "
+            text += f"{prefix}{staff_info}\n"
+
     query = update.callback_query
     if query:
         await query.answer()
         await query.edit_message_text(text)
     else:
         await update.message.reply_text(text)
+
+async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_staff(user_id):
+        await update.message.reply_text("❌ No tienes permisos para ver las estadísticas.")
+        return
+    
+    # Aquí iría la lógica de estadísticas reales de la DB
+    # Por ahora mostramos algo básico basado en lo que hay en database.py
+    # En una implementación real se añadiría un método get_global_stats a la DB
+    await update.message.reply_text("📊 Estadísticas Globales:\n(Funcionalidad limitada a Staff)")
 
 async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -151,7 +202,7 @@ async def get_pruebas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['reporter_name'] = update.effective_user.username or update.effective_user.first_name
     context.user_data['reporter_id'] = update.effective_user.id
     
-    # Enviar al admin para moderación
+    # Enviar al dueño único (ADMIN_ID) para moderación
     admin_text = (
         "🔔 NUEVO REPORTE PARA MODERACIÓN\n\n"
         f"Rata: {context.user_data['rata_id']}\n"
@@ -162,8 +213,8 @@ async def get_pruebas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     keyboard = [
         [
-            InlineKeyboardButton("✅ Aprobar", callback_data=f"approve_{update.effective_user.id}"),
-            InlineKeyboardButton("❌ Rechazar", callback_data=f"reject_{update.effective_user.id}")
+            InlineKeyboardButton("✅ Aceptar", callback_data=f"approve_{update.effective_user.id}"),
+            InlineKeyboardButton("🏁 Concluir", callback_data=f"reject_{update.effective_user.id}")
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -171,6 +222,7 @@ async def get_pruebas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Guardar temporalmente los datos en context.bot_data para recuperarlos en el callback
     context.bot_data[f"report_{update.effective_user.id}"] = context.user_data.copy()
     
+    # Solo el ADMIN_ID recibe el reporte
     await context.bot.send_photo(
         chat_id=ADMIN_ID,
         photo=context.user_data['foto_id'],
@@ -183,6 +235,13 @@ async def get_pruebas(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def moderation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    user_id = update.effective_user.id
+
+    # Solo el dueño puede interactuar con los botones de moderación
+    if not is_owner(user_id):
+        await query.answer("❌ No tienes permisos para gestionar reportes.", show_alert=True)
+        return
+
     action, reporter_id = query.data.split("_")
     report_data = context.bot_data.get(f"report_{reporter_id}")
     
@@ -232,15 +291,15 @@ async def moderation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             # Nota: El grupo requiere que el bot esté dentro y tengamos el ID real
             # await context.bot.send_photo(chat_id=GRUPO_ID, photo=report_data['foto_id'], caption=public_text)
             
-            await context.bot.send_message(chat_id=reporter_id, text="✅ Tu reporte ha sido aprobado y publicado.")
-            await query.edit_message_caption("✅ Reporte Aprobado.")
+            await context.bot.send_message(chat_id=reporter_id, text="✅ Tu reporte ha sido aceptado y publicado.")
+            await query.edit_message_caption("✅ Reporte Aceptado.")
             
         except Exception as e:
             await query.answer(f"Error al procesar: {str(e)}")
             
     else:
-        await context.bot.send_message(chat_id=reporter_id, text="❌ Tu reporte ha sido rechazado por el administrador.")
-        await query.edit_message_caption("❌ Reporte Rechazado.")
+        await context.bot.send_message(chat_id=reporter_id, text="🏁 El reporte ha sido concluido.")
+        await query.edit_message_caption("🏁 Reporte Concluido.")
 
     del context.bot_data[f"report_{reporter_id}"]
     await query.answer()
@@ -256,6 +315,9 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler('comandos', show_commands))
     application.add_handler(CommandHandler('info', info_cmd))
+    application.add_handler(CommandHandler('staff', show_staff))
+    application.add_handler(CommandHandler('admins', show_staff))
+    application.add_handler(CommandHandler('stats', stats_cmd))
     application.add_handler(CallbackQueryHandler(show_commands, pattern="show_commands"))
     application.add_handler(CallbackQueryHandler(show_staff, pattern="show_staff"))
     application.add_handler(CallbackQueryHandler(moderation_callback, pattern="^(approve|reject)_"))
