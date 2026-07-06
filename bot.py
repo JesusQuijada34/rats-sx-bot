@@ -33,6 +33,17 @@ def is_owner(user_id):
 def is_staff(user_id):
     return user_id in ADMIN_IDS or user_id == OWNER_ID
 
+def to_unicode_bold(text):
+    bold_map = {
+        'A': '𝐀', 'B': '𝐁', 'C': '𝐂', 'D': '𝐃', 'E': '𝐄', 'F': '𝐅', 'G': '𝐆', 'H': '𝐇', 'I': '𝐈', 
+        'J': '𝐉', 'K': '𝐊', 'L': '𝐋', 'M': '𝐌', 'N': '𝐍', 'O': '𝐎', 'P': '𝐏', 'Q': '𝐐', 'R': '𝐑', 
+        'S': '𝐒', 'T': '𝐓', 'U': '𝐔', 'V': '𝐕', 'W': '𝐖', 'X': '𝐗', 'Y': '𝐘', 'Z': '𝐙',
+        'a': '𝐚', 'b': '𝐛', 'c': '𝐜', 'd': '𝐝', 'e': '𝐞', 'f': '𝐟', 'g': '𝐠', 'h': '𝐡', 'i': '𝐢', 
+        'j': '𝐣', 'k': '𝐤', 'l': '𝐥', 'm': '𝐦', 'n': '𝐧', 'o': '𝐨', 'p': '𝐩', 'q': '𝐪', 'r': '𝐫', 
+        's': '𝐬', 't': '𝐭', 'u': '𝐮', 'v': '𝐯', 'w': '𝐰', 'x': '𝐱', 'y': '𝐲', 'z': '𝐳'
+    }
+    return "".join(bold_map.get(c, c) for c in text)
+
 def get_all_admins():
     admins = [OWNER_ID]
     for aid in ADMIN_IDS:
@@ -97,9 +108,8 @@ async def show_staff(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Construir lista de Staff
     staff_list = []
-    # Añadimos manualmente @cine_elite si no está en la lista (esto es representativo para el formato)
-    # En una implementación real, esto vendría de ADMIN_IDS
-    display_staff_ids = list(ADMIN_IDS)
+    # Filtrar OWNER_ID de ADMIN_IDS para no duplicar si está en ambos
+    display_staff_ids = [aid for aid in ADMIN_IDS if aid != OWNER_ID]
     
     for staff_id in display_staff_ids:
         try:
@@ -109,20 +119,18 @@ async def show_staff(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             staff_list.append(f"Staff [{staff_id}]")
     
-    # Si la lista está vacía, mostramos el ejemplo solicitado
-    if not staff_list:
-        staff_list.append("@cine_elite [ID_STAFF]")
-
-    # Formatear el mensaje según la plantilla
-    text = "𝙋𝙡𝙖𝙜𝙖 𝙎𝙥𝙖𝙢 𝘾𝙉:\n\n"
-    text += "ADMINS DEL BOT \n\n"
-    text += "⚜️OWNER\n"
+    # Formatear el mensaje según la plantilla solicitada
+    text = "ADMINS DEL BOT\n\n"
+    text += f"⚜️{to_unicode_bold('OWNER')}\n"
     text += f"└  {owner_username} [{OWNER_ID}]\n\n"
-    text += "👮‍♂️ STAFF\n"
+    text += f"👮‍♂️ {to_unicode_bold('STAFF')}\n"
     
-    for i, staff_info in enumerate(staff_list):
-        prefix = "├ " if i < len(staff_list) - 1 else "└ "
-        text += f"{prefix}{staff_info}\n"
+    if not staff_list:
+        text += "└  (Sin staff configurado)"
+    else:
+        for i, staff_info in enumerate(staff_list):
+            prefix = "├ " if i < len(staff_list) - 1 else "└ "
+            text += f"{prefix}{staff_info}\n"
 
     query = update.callback_query
     if query:
@@ -322,14 +330,15 @@ async def moderation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             
             await context.bot.send_message(chat_id=reporter_id, text="✅ Tu reporte ha sido aceptado y publicado.")
             
-            # Actualizar todos los mensajes de los admins
+            # Actualizar todos los mensajes de los admins en tiempo real
             status_text = f"✅ Reporte Aceptado por @{admin_name}"
             for admin_id, msg_id in report_data.get('admin_messages', []):
                 try:
                     await context.bot.edit_message_caption(
                         chat_id=admin_id,
                         message_id=msg_id,
-                        caption=f"{status_text}\n\nRata: {report_data['rata_id']}"
+                        caption=f"{status_text}\n\nRata: {report_data['rata_id']}\nContexto: {report_data['contexto']}\nBanca: {report_data['banca']}",
+                        reply_markup=None # Quitar botones una vez gestionado
                     )
                 except Exception:
                     pass
@@ -341,14 +350,15 @@ async def moderation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     else:
         await context.bot.send_message(chat_id=reporter_id, text="🏁 El reporte ha sido concluido.")
         
-        # Actualizar todos los mensajes de los admins
+        # Actualizar todos los mensajes de los admins en tiempo real
         status_text = f"🏁 Reporte Concluido por @{admin_name}"
         for admin_id, msg_id in report_data.get('admin_messages', []):
             try:
                 await context.bot.edit_message_caption(
                     chat_id=admin_id,
                     message_id=msg_id,
-                    caption=f"{status_text}\n\nRata: {report_data['rata_id']}"
+                    caption=f"{status_text}\n\nRata: {report_data['rata_id']}\nContexto: {report_data['contexto']}\nBanca: {report_data['banca']}",
+                    reply_markup=None # Quitar botones una vez gestionado
                 )
             except Exception:
                 pass

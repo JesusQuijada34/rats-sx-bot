@@ -52,21 +52,16 @@
         <h2>Nuestro Staff</h2>
         <p>Los responsables detrás de la seguridad de Rats Sx.</p>
         <div class="staff-container">
+            {% for member in staff %}
             <div class="staff-card">
-                <i class="fas fa-crown"></i>
-                <h3>@PlagaVT</h3>
-                <p>Fundador & Dueño</p>
+                <i class="fas {{ member.icon }}"></i>
+                <h3>{{ member.username }}</h3>
+                <p>{{ member.role }}</p>
             </div>
-            <div class="staff-card">
-                <i class="fas fa-user-check"></i>
-                <h3>@Edwxzz</h3>
-                <p>Administrador de Moderación</p>
-            </div>
-            <div class="staff-card">
-                <i class="fas fa-code"></i>
-                <h3>@jesusquijada34</h3>
-                <p>Desarrollador Principal</p>
-            </div>
+            {% endfor %}
+            {% if not staff %}
+            <p>Cargando información del staff...</p>
+            {% endif %}
         </div>
     </section>
 

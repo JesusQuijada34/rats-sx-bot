@@ -22,7 +22,8 @@ load_dotenv()
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 # Soporte para múltiples IDs de Admin (separados por comas)
 ADMIN_IDS = [int(i.strip()) for i in os.getenv("ADMIN_IDS", "0").split(",") if i.strip().isdigit()]
-STAFF_INFO = os.getenv("STAFF_INFO", "@PlagaVT, @Edwxzz, @jesusquijada34")
+# Dueño único (OWNER_ID) - Se obtiene del env ADMIN_ID (como en bot.py)
+OWNER_ID = int(os.getenv("ADMIN_ID", 6503848135))
 CANAL_URL = os.getenv("CANAL_URL", "https://t.me/Ratssx")
 GRUPO_URL = os.getenv("GRUPO_URL", "https://t.me/+S3afbQ2tUqQwYWMx")
 
@@ -162,15 +163,17 @@ async def get_pruebas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admin_kb = [[InlineKeyboardButton("✅ Aprobar", callback_data=f"appr_{update.effective_user.id}"),
                  InlineKeyboardButton("❌ Rechazar", callback_data=f"rejc_{update.effective_user.id}")]]
     
-    # Enviar a TODOS los administradores
+    # Enviar a TODOS los administradores y guardar IDs de mensajes para actualización en tiempo real
+    data['admin_messages'] = []
     for admin_id in ADMIN_IDS:
         try:
-            await context.bot.send_photo(
+            msg = await context.bot.send_photo(
                 chat_id=admin_id,
                 photo=data['foto_id'],
                 caption=f"🔔 NUEVO REPORTE\nDe: @{data['reporter_name']}\nRata: {data['rata_id']}\nContexto: {data['contexto']}\nBanca: {data['banca']}",
                 reply_markup=InlineKeyboardMarkup(admin_kb)
             )
+            data['admin_messages'].append((admin_id, msg.message_id))
         except Exception as e:
             logging.error(f"No se pudo enviar reporte al admin {admin_id}: {e}")
             
@@ -226,10 +229,34 @@ async def moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e: logging.error(f"Error grupo: {e}")
         
         await context.bot.send_message(chat_id=reporter_id, text="✅ Tu reporte ha sido aprobado.")
-        await query.edit_message_caption(f"✅ Aprobado por @{query.from_user.username or query.from_user.first_name}")
+        
+        # Actualizar todos los mensajes de los admins en tiempo real
+        admin_name = query.from_user.username or query.from_user.first_name
+        status_text = f"✅ Aprobado por @{admin_name}"
+        for admin_id, msg_id in data.get('admin_messages', []):
+            try:
+                await context.bot.edit_message_caption(
+                    chat_id=admin_id,
+                    message_id=msg_id,
+                    caption=f"{status_text}\n\nRata: {data['rata_id']}\nContexto: {data['contexto']}\nBanca: {data['banca']}",
+                    reply_markup=None
+                )
+            except Exception: pass
     else:
         await context.bot.send_message(chat_id=reporter_id, text="❌ Tu reporte ha sido rechazado.")
-        await query.edit_message_caption(f"❌ Rechazado por @{query.from_user.username or query.from_user.first_name}")
+        
+        # Actualizar todos los mensajes de los admins en tiempo real
+        admin_name = query.from_user.username or query.from_user.first_name
+        status_text = f"❌ Rechazado por @{admin_name}"
+        for admin_id, msg_id in data.get('admin_messages', []):
+            try:
+                await context.bot.edit_message_caption(
+                    chat_id=admin_id,
+                    message_id=msg_id,
+                    caption=f"{status_text}\n\nRata: {data['rata_id']}\nContexto: {data['contexto']}\nBanca: {data['banca']}",
+                    reply_markup=None
+                )
+            except Exception: pass
     
     if f"rep_{reporter_id}" in context.bot_data:
         del context.bot_data[f"rep_{reporter_id}"]
@@ -239,10 +266,55 @@ async def moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 app = Flask(__name__)
 
+async def get_staff_list_async():
+    # Esta función se usará para obtener la lista de staff dinámicamente
+    # Como Flask es síncrono por defecto, usaremos un pequeño truco o 
+    # simplemente pasaremos la lógica de obtención de datos a la ruta.
+    from telegram import Bot
+    bot = Bot(TOKEN)
+    staff_data = []
+    
+    # Obtener Owner
+    try:
+        owner_chat = await bot.get_chat(OWNER_ID)
+        owner_info = {
+            'username': f"@{owner_chat.username}" if owner_chat.username else owner_chat.first_name,
+            'role': 'Fundador & Dueño',
+            'icon': 'fa-crown'
+        }
+    except Exception:
+        owner_info = {'username': 'Dueño', 'role': 'Fundador & Dueño', 'icon': 'fa-crown'}
+    
+    staff_data.append(owner_info)
+    
+    # Obtener Staff (ADMIN_IDS)
+    for aid in ADMIN_IDS:
+        if aid == OWNER_ID: continue
+        try:
+            chat = await bot.get_chat(aid)
+            staff_data.append({
+                'username': f"@{chat.username}" if chat.username else chat.first_name,
+                'role': 'Administrador',
+                'icon': 'fa-user-shield'
+            })
+        except Exception:
+            pass
+    return staff_data
+
 @app.route('/')
 def index():
-    # Pasar info de staff al template si es necesario
-    return render_template('index.html', staff=STAFF_INFO)
+    import asyncio
+    # Obtener staff dinámicamente desde la API de Telegram
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        staff_list = loop.run_until_complete(get_staff_list_async())
+        loop.close()
+    except Exception as e:
+        logging.error(f"Error obteniendo staff para web: {e}")
+        staff_list = []
+        
+    return render_template('index.html', staff=staff_list)
 
 @app.route('/style.css')
 def styles():
