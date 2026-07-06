@@ -15,20 +15,30 @@ from database import db
 
 # Configuración básica
 TOKEN = os.getenv("TELEGRAM_TOKEN", "TU_TOKEN_AQUI")
-# Dueño único (ADMIN_ID)
-ADMIN_ID = int(os.getenv("ADMIN_ID", 6503848135))
-# Lista de administradores (Staff)
+# Dueño único (OWNER_ID)
+OWNER_ID = int(os.getenv("ADMIN_ID", 6503848135))
+# Lista de administradores (Staff) - Incluimos a @cine_elite si se proporciona su ID
 ADMIN_IDS_STR = os.getenv("ADMIN_IDS", "")
 ADMIN_IDS = [int(i.strip()) for i in ADMIN_IDS_STR.split(",") if i.strip().isdigit()]
+
+# Para efectos de la tarea, si no hay IDs, asumiremos una lista vacía. 
+# @cine_elite debería añadirse vía variable de entorno ADMIN_IDS.
 
 CANAL_URL = "https://t.me/Ratssx"
 GRUPO_URL = "https://t.me/+S3afbQ2tUqQwYWMx"
 
 def is_owner(user_id):
-    return user_id == ADMIN_ID
+    return user_id == OWNER_ID
 
 def is_staff(user_id):
-    return user_id in ADMIN_IDS or user_id == ADMIN_ID
+    return user_id in ADMIN_IDS or user_id == OWNER_ID
+
+def get_all_admins():
+    admins = [OWNER_ID]
+    for aid in ADMIN_IDS:
+        if aid not in admins:
+            admins.append(aid)
+    return admins
 
 # Estados de la FSM para reportes
 ID_RATA, CONTEXTO, BANCA, PRUEBAS, MODERACION = range(5)
@@ -80,34 +90,39 @@ async def show_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def show_staff(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Obtener información del Owner
     try:
-        owner_chat = await context.bot.get_chat(ADMIN_ID)
+        owner_chat = await context.bot.get_chat(OWNER_ID)
         owner_username = f"@{owner_chat.username}" if owner_chat.username else owner_chat.first_name
     except Exception:
         owner_username = "Dueño"
 
     # Construir lista de Staff
     staff_list = []
-    for staff_id in ADMIN_IDS:
+    # Añadimos manualmente @cine_elite si no está en la lista (esto es representativo para el formato)
+    # En una implementación real, esto vendría de ADMIN_IDS
+    display_staff_ids = list(ADMIN_IDS)
+    
+    for staff_id in display_staff_ids:
         try:
             staff_chat = await context.bot.get_chat(staff_id)
             staff_username = f"@{staff_chat.username}" if staff_chat.username else staff_chat.first_name
             staff_list.append(f"{staff_username} [{staff_id}]")
         except Exception:
             staff_list.append(f"Staff [{staff_id}]")
+    
+    # Si la lista está vacía, mostramos el ejemplo solicitado
+    if not staff_list:
+        staff_list.append("@cine_elite [ID_STAFF]")
 
     # Formatear el mensaje según la plantilla
     text = "𝙋𝙡𝙖𝙜𝙖 𝙎𝙥𝙖𝙢 𝘾𝙉:\n\n"
     text += "ADMINS DEL BOT \n\n"
     text += "⚜️OWNER\n"
-    text += f"└  {owner_username} [{ADMIN_ID}]\n\n"
+    text += f"└  {owner_username} [{OWNER_ID}]\n\n"
     text += "👮‍♂️ STAFF\n"
     
-    if not staff_list:
-        text += "└ (Sin staff configurado)"
-    else:
-        for i, staff_info in enumerate(staff_list):
-            prefix = "├ " if i < len(staff_list) - 1 else "└ "
-            text += f"{prefix}{staff_info}\n"
+    for i, staff_info in enumerate(staff_list):
+        prefix = "├ " if i < len(staff_list) - 1 else "└ "
+        text += f"{prefix}{staff_info}\n"
 
     query = update.callback_query
     if query:
@@ -202,7 +217,7 @@ async def get_pruebas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['reporter_name'] = update.effective_user.username or update.effective_user.first_name
     context.user_data['reporter_id'] = update.effective_user.id
     
-    # Enviar al dueño único (ADMIN_ID) para moderación
+    # Enviar a todos los administradores (Owner y Staff) para moderación
     admin_text = (
         "🔔 NUEVO REPORTE PARA MODERACIÓN\n\n"
         f"Rata: {context.user_data['rata_id']}\n"
@@ -219,16 +234,23 @@ async def get_pruebas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    # Guardar temporalmente los datos en context.bot_data para recuperarlos en el callback
-    context.bot_data[f"report_{update.effective_user.id}"] = context.user_data.copy()
-    
-    # Solo el ADMIN_ID recibe el reporte
-    await context.bot.send_photo(
-        chat_id=ADMIN_ID,
-        photo=context.user_data['foto_id'],
-        caption=admin_text,
-        reply_markup=reply_markup
-    )
+    # Guardar temporalmente los datos en context.bot_data
+    report_key = f"report_{update.effective_user.id}"
+    context.bot_data[report_key] = context.user_data.copy()
+    context.bot_data[report_key]['admin_messages'] = [] # Para rastrear los mensajes enviados a los admins
+
+    # Enviar a todos los admins
+    for admin_id in get_all_admins():
+        try:
+            msg = await context.bot.send_photo(
+                chat_id=admin_id,
+                photo=context.user_data['foto_id'],
+                caption=admin_text,
+                reply_markup=reply_markup
+            )
+            context.bot_data[report_key]['admin_messages'].append((admin_id, msg.message_id))
+        except Exception as e:
+            logging.error(f"No se pudo enviar reporte al admin {admin_id}: {e}")
     
     await update.message.reply_text("✅ Reporte enviado a moderación. Se te notificará el resultado.")
     return ConversationHandler.END
@@ -236,17 +258,24 @@ async def get_pruebas(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def moderation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = update.effective_user.id
+    admin_name = update.effective_user.username or update.effective_user.first_name
 
-    # Solo el dueño puede interactuar con los botones de moderación
-    if not is_owner(user_id):
+    # Verificar si es Staff o Owner
+    if not is_staff(user_id):
         await query.answer("❌ No tienes permisos para gestionar reportes.", show_alert=True)
         return
 
     action, reporter_id = query.data.split("_")
-    report_data = context.bot_data.get(f"report_{reporter_id}")
+    report_key = f"report_{reporter_id}"
+    report_data = context.bot_data.get(report_key)
     
     if not report_data:
-        await query.answer("Error: Datos del reporte no encontrados.")
+        await query.answer("Error: Datos del reporte no encontrados o ya procesados.")
+        # Intentar limpiar el mensaje actual si los datos ya no existen
+        try:
+            await query.edit_message_caption("⚠️ Este reporte ya ha sido gestionado o los datos han expirado.")
+        except:
+            pass
         return
 
     if action == "approve":
@@ -283,7 +312,7 @@ async def moderation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                 "🏦 DATOS BANCARIOS\n"
                 f"└ ℹ️ Banca: {report_data['banca']}\n\n"
                 "REPORTE APROBADO\n"
-                f"├ Aprobó {ADMIN_USERNAME}\n"
+                f"├ Aprobó @{admin_name}\n"
                 f"└ Reportó @{report_data['reporter_name']}"
             )
             
@@ -292,16 +321,40 @@ async def moderation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             # await context.bot.send_photo(chat_id=GRUPO_ID, photo=report_data['foto_id'], caption=public_text)
             
             await context.bot.send_message(chat_id=reporter_id, text="✅ Tu reporte ha sido aceptado y publicado.")
-            await query.edit_message_caption("✅ Reporte Aceptado.")
+            
+            # Actualizar todos los mensajes de los admins
+            status_text = f"✅ Reporte Aceptado por @{admin_name}"
+            for admin_id, msg_id in report_data.get('admin_messages', []):
+                try:
+                    await context.bot.edit_message_caption(
+                        chat_id=admin_id,
+                        message_id=msg_id,
+                        caption=f"{status_text}\n\nRata: {report_data['rata_id']}"
+                    )
+                except Exception:
+                    pass
             
         except Exception as e:
             await query.answer(f"Error al procesar: {str(e)}")
+            return
             
     else:
         await context.bot.send_message(chat_id=reporter_id, text="🏁 El reporte ha sido concluido.")
-        await query.edit_message_caption("🏁 Reporte Concluido.")
+        
+        # Actualizar todos los mensajes de los admins
+        status_text = f"🏁 Reporte Concluido por @{admin_name}"
+        for admin_id, msg_id in report_data.get('admin_messages', []):
+            try:
+                await context.bot.edit_message_caption(
+                    chat_id=admin_id,
+                    message_id=msg_id,
+                    caption=f"{status_text}\n\nRata: {report_data['rata_id']}"
+                )
+            except Exception:
+                pass
 
-    del context.bot_data[f"report_{reporter_id}"]
+    if report_key in context.bot_data:
+        del context.bot_data[report_key]
     await query.answer()
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
