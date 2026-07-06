@@ -157,3 +157,46 @@ footer {
         font-size: 2.5rem;
     }
 }
+
+.staff-section {
+    padding: 5rem 5%;
+    text-align: center;
+    background: var(--dark);
+}
+
+.staff-container {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    flex-wrap: wrap;
+    margin-top: 3rem;
+}
+
+.staff-card {
+    background: #2a2a2a;
+    padding: 2.5rem;
+    border-radius: 15px;
+    width: 280px;
+    border: 1px solid #444;
+    transition: 0.3s;
+}
+
+.staff-card:hover {
+    border-color: var(--primary);
+    transform: translateY(-5px);
+}
+
+.staff-card i {
+    font-size: 3.5rem;
+    color: var(--primary);
+    margin-bottom: 1.5rem;
+}
+
+.staff-card h3 {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.staff-card p {
+    color: #aaa;
+}

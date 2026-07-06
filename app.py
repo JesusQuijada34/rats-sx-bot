@@ -20,12 +20,12 @@ load_dotenv()
 
 # Configuración desde entorno
 TOKEN = os.getenv("TELEGRAM_TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
-ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "@PlagaVT")
+# Soporte para múltiples IDs de Admin (separados por comas)
+ADMIN_IDS = [int(i.strip()) for i in os.getenv("ADMIN_IDS", "0").split(",") if i.strip().isdigit()]
+STAFF_INFO = os.getenv("STAFF_INFO", "@PlagaVT, @Edwxzz")
 CANAL_URL = os.getenv("CANAL_URL", "https://t.me/Ratssx")
 GRUPO_URL = os.getenv("GRUPO_URL", "https://t.me/+S3afbQ2tUqQwYWMx")
 
-# IDs de Chat (pueden ser numéricos para privados)
 def get_chat_id(env_var):
     val = os.getenv(env_var)
     if val and (val.startswith("-") or val.isdigit()):
@@ -72,7 +72,7 @@ async def show_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else: await update.message.reply_text(text)
 
 async def show_staff(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = f"Staff 👤\nAdministrador/Dueño: {ADMIN_USERNAME}"
+    text = f"Staff 👤\nColaboradores Oficiales:\n{STAFF_INFO}\n\nDueño: @PlagaVT"
     query = update.callback_query
     if query: await query.answer(); await query.edit_message_text(text)
     else: await update.message.reply_text(text)
@@ -162,17 +162,28 @@ async def get_pruebas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admin_kb = [[InlineKeyboardButton("✅ Aprobar", callback_data=f"appr_{update.effective_user.id}"),
                  InlineKeyboardButton("❌ Rechazar", callback_data=f"rejc_{update.effective_user.id}")]]
     
-    await context.bot.send_photo(
-        chat_id=ADMIN_ID,
-        photo=data['foto_id'],
-        caption=f"🔔 NUEVO REPORTE\nDe: @{data['reporter_name']}\nRata: {data['rata_id']}\nContexto: {data['contexto']}\nBanca: {data['banca']}",
-        reply_markup=InlineKeyboardMarkup(admin_kb)
-    )
+    # Enviar a TODOS los administradores
+    for admin_id in ADMIN_IDS:
+        try:
+            await context.bot.send_photo(
+                chat_id=admin_id,
+                photo=data['foto_id'],
+                caption=f"🔔 NUEVO REPORTE\nDe: @{data['reporter_name']}\nRata: {data['rata_id']}\nContexto: {data['contexto']}\nBanca: {data['banca']}",
+                reply_markup=InlineKeyboardMarkup(admin_kb)
+            )
+        except Exception as e:
+            logging.error(f"No se pudo enviar reporte al admin {admin_id}: {e}")
+            
     await update.message.reply_text("✅ Reporte enviado a moderación. Se te notificará el resultado.")
     return ConversationHandler.END
 
 async def moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    # Verificar si el que pulsa el botón es admin
+    if query.from_user.id not in ADMIN_IDS:
+        await query.answer("No tienes permisos para moderar.", show_alert=True)
+        return
+
     action, reporter_id = query.data.split("_")
     data = context.bot_data.get(f"rep_{reporter_id}")
     
@@ -181,7 +192,6 @@ async def moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if action == "appr":
-        # Guardar en DB
         rata_id = data['rata_id'] if data['rata_id'].isdigit() else 0
         report_id = db.add_report(
             scammer_id=rata_id,
@@ -190,7 +200,7 @@ async def moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context=data['contexto'],
             bank_details=data['banca'],
             reporter_id=int(reporter_id),
-            approver_id=ADMIN_ID,
+            approver_id=query.from_user.id,
             proof_photo_id=data['foto_id']
         )
         
@@ -203,25 +213,23 @@ async def moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🏦 DATOS BANCARIOS\n"
             f"└ ℹ️ Banca: {data['banca']}\n\n"
             "REPORTE APROBADO\n"
-            f"├ Aprobó {ADMIN_USERNAME}\n"
+            f"├ Aprobó @{query.from_user.username or query.from_user.first_name}\n"
             f"└ Reportó @{data['reporter_name']}"
         )
         
-        # Publicar en Canal
         if CANAL_CHAT_ID:
             try: await context.bot.send_photo(chat_id=CANAL_CHAT_ID, photo=data['foto_id'], caption=public_text)
             except Exception as e: logging.error(f"Error canal: {e}")
             
-        # Publicar en Grupo
         if GRUPO_CHAT_ID:
             try: await context.bot.send_photo(chat_id=GRUPO_CHAT_ID, photo=data['foto_id'], caption=public_text)
             except Exception as e: logging.error(f"Error grupo: {e}")
         
         await context.bot.send_message(chat_id=reporter_id, text="✅ Tu reporte ha sido aprobado.")
-        await query.edit_message_caption("✅ Aprobado.")
+        await query.edit_message_caption(f"✅ Aprobado por @{query.from_user.username or query.from_user.first_name}")
     else:
         await context.bot.send_message(chat_id=reporter_id, text="❌ Tu reporte ha sido rechazado.")
-        await query.edit_message_caption("❌ Rechazado.")
+        await query.edit_message_caption(f"❌ Rechazado por @{query.from_user.username or query.from_user.first_name}")
     
     if f"rep_{reporter_id}" in context.bot_data:
         del context.bot_data[f"rep_{reporter_id}"]
@@ -233,7 +241,8 @@ app = Flask(__name__)
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    # Pasar info de staff al template si es necesario
+    return render_template('index.html', staff=STAFF_INFO)
 
 @app.route('/style.css')
 def styles():
