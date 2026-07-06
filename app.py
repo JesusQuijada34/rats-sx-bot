@@ -18,14 +18,27 @@ from dotenv import load_dotenv
 # Cargar variables de entorno
 load_dotenv()
 
-# Configuración desde entorno
+# Configuración desde entorno - Consistente con bot.py
 TOKEN = os.getenv("TELEGRAM_TOKEN")
-# Soporte para múltiples IDs de Admin (separados por comas)
-ADMIN_IDS = [int(i.strip()) for i in os.getenv("ADMIN_IDS", "0").split(",") if i.strip().isdigit()]
-# Dueño único (OWNER_ID) - Se obtiene del env ADMIN_ID (como en bot.py)
-OWNER_ID = int(os.getenv("ADMIN_ID", 6503848135))
+OWNER_ID_STR = os.getenv("OWNER_ID")
+OWNER_ID = int(OWNER_ID_STR) if OWNER_ID_STR and OWNER_ID_STR.isdigit() else None
+
+# Lista de administradores (Staff)
+ADMIN_IDS_STR = os.getenv("ADMIN_IDS", "")
+ADMIN_IDS = [int(i.strip()) for i in ADMIN_IDS_STR.split(",") if i.strip().isdigit()]
+
 CANAL_URL = os.getenv("CANAL_URL", "https://t.me/Ratssx")
 GRUPO_URL = os.getenv("GRUPO_URL", "https://t.me/+S3afbQ2tUqQwYWMx")
+
+def get_chat_id(env_var):
+    val = os.getenv(env_var)
+    if val and (val.startswith("-") or val.isdigit()):
+        return int(val)
+    return val
+
+# Estos IDs se usan para enviar los reportes aprobados automáticamente
+CANAL_CHAT_ID = get_chat_id("CANAL_CHAT_ID")
+GRUPO_CHAT_ID = get_chat_id("GRUPO_CHAT_ID")
 
 def to_unicode_bold(text):
     bold_map = {
@@ -38,14 +51,17 @@ def to_unicode_bold(text):
     }
     return "".join(bold_map.get(c, c) for c in text)
 
-def get_chat_id(env_var):
-    val = os.getenv(env_var)
-    if val and (val.startswith("-") or val.isdigit()):
-        return int(val)
-    return val
+def get_all_admins():
+    admins = []
+    if OWNER_ID:
+        admins.append(OWNER_ID)
+    for aid in ADMIN_IDS:
+        if aid not in admins:
+            admins.append(aid)
+    return admins
 
-CANAL_CHAT_ID = get_chat_id("CANAL_CHAT_ID")
-GRUPO_CHAT_ID = get_chat_id("GRUPO_CHAT_ID")
+def is_staff(user_id):
+    return user_id in ADMIN_IDS or user_id == OWNER_ID
 
 # Estados de la FSM
 ID_RATA, CONTEXTO, BANCA, PRUEBAS = range(4)
@@ -77,23 +93,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def show_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         "/info del usuario proporciona el id o usuario\n"
-        "/Report Sirve para enviar el reporte de la funa y sea aprobado por un administrador y subido ah el bot y ah el canal"
+        "/report Sirve para enviar el reporte de la funa y sea aprobado por un administrador y subido ah el bot y ah el canal"
     )
     query = update.callback_query
-    if query: await query.answer(); await query.edit_message_text(text)
-    else: await update.message.reply_text(text)
+    if query:
+        await query.answer()
+        await query.edit_message_text(text)
+    else:
+        await update.message.reply_text(text)
 
 async def show_staff(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Obtener información del Owner
-    try:
-        owner_chat = await context.bot.get_chat(OWNER_ID)
-        owner_username = f"@{owner_chat.username}" if owner_chat.username else owner_chat.first_name
-    except Exception:
-        owner_username = "Dueño"
+    owner_username = "No configurado"
+    if OWNER_ID:
+        try:
+            owner_chat = await context.bot.get_chat(OWNER_ID)
+            owner_username = f"@{owner_chat.username}" if owner_chat.username else owner_chat.first_name
+        except Exception:
+            owner_username = "Dueño (No localizable)"
 
-    # Construir lista de Staff
     staff_list = []
-    # Filtrar OWNER_ID de ADMIN_IDS para no duplicar si está en ambos
     display_staff_ids = [aid for aid in ADMIN_IDS if aid != OWNER_ID]
     
     for staff_id in display_staff_ids:
@@ -104,10 +122,9 @@ async def show_staff(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             staff_list.append(f"Staff [{staff_id}]")
     
-    # Formatear el mensaje según la plantilla solicitada
     text = "ADMINS DEL BOT\n\n"
     text += f"⚜️{to_unicode_bold('OWNER')}\n"
-    text += f"└  {owner_username} [{OWNER_ID}]\n\n"
+    text += f"└  {owner_username} [{OWNER_ID if OWNER_ID else '???'}]\n\n"
     text += f"👮‍♂️ {to_unicode_bold('STAFF')}\n"
     
     if not staff_list:
@@ -209,9 +226,8 @@ async def get_pruebas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admin_kb = [[InlineKeyboardButton("✅ Aprobar", callback_data=f"appr_{update.effective_user.id}"),
                  InlineKeyboardButton("❌ Rechazar", callback_data=f"rejc_{update.effective_user.id}")]]
     
-    # Enviar a TODOS los administradores y guardar IDs de mensajes para actualización en tiempo real
     data['admin_messages'] = []
-    for admin_id in ADMIN_IDS:
+    for admin_id in get_all_admins():
         try:
             msg = await context.bot.send_photo(
                 chat_id=admin_id,
@@ -228,8 +244,7 @@ async def get_pruebas(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    # Verificar si el que pulsa el botón es admin
-    if query.from_user.id not in ADMIN_IDS:
+    if not is_staff(query.from_user.id):
         await query.answer("No tienes permisos para moderar.", show_alert=True)
         return
 
@@ -276,7 +291,6 @@ async def moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await context.bot.send_message(chat_id=reporter_id, text="✅ Tu reporte ha sido aprobado.")
         
-        # Actualizar todos los mensajes de los admins en tiempo real
         admin_name = query.from_user.username or query.from_user.first_name
         status_text = f"✅ Aprobado por @{admin_name}"
         for admin_id, msg_id in data.get('admin_messages', []):
@@ -291,7 +305,6 @@ async def moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await context.bot.send_message(chat_id=reporter_id, text="❌ Tu reporte ha sido rechazado.")
         
-        # Actualizar todos los mensajes de los admins en tiempo real
         admin_name = query.from_user.username or query.from_user.first_name
         status_text = f"❌ Rechazado por @{admin_name}"
         for admin_id, msg_id in data.get('admin_messages', []):
@@ -313,27 +326,21 @@ async def moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
 app = Flask(__name__)
 
 async def get_staff_list_async():
-    # Esta función se usará para obtener la lista de staff dinámicamente
-    # Como Flask es síncrono por defecto, usaremos un pequeño truco o 
-    # simplemente pasaremos la lógica de obtención de datos a la ruta.
     from telegram import Bot
     bot = Bot(TOKEN)
     staff_data = []
     
-    # Obtener Owner
-    try:
-        owner_chat = await bot.get_chat(OWNER_ID)
-        owner_info = {
-            'username': f"@{owner_chat.username}" if owner_chat.username else owner_chat.first_name,
-            'role': 'Fundador & Dueño',
-            'icon': 'fa-crown'
-        }
-    except Exception:
-        owner_info = {'username': 'Dueño', 'role': 'Fundador & Dueño', 'icon': 'fa-crown'}
+    if OWNER_ID:
+        try:
+            owner_chat = await bot.get_chat(OWNER_ID)
+            staff_data.append({
+                'username': f"@{owner_chat.username}" if owner_chat.username else owner_chat.first_name,
+                'role': 'Fundador & Dueño',
+                'icon': 'fa-crown'
+            })
+        except Exception:
+            staff_data.append({'username': 'Dueño', 'role': 'Fundador & Dueño', 'icon': 'fa-crown'})
     
-    staff_data.append(owner_info)
-    
-    # Obtener Staff (ADMIN_IDS)
     for aid in ADMIN_IDS:
         if aid == OWNER_ID: continue
         try:
@@ -350,7 +357,6 @@ async def get_staff_list_async():
 @app.route('/')
 def index():
     import asyncio
-    # Obtener staff dinámicamente desde la API de Telegram
     try:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -371,9 +377,12 @@ def run_flask():
     app.run(host='0.0.0.0', port=port)
 
 def run_bot():
+    if not TOKEN:
+        logging.error("TELEGRAM_TOKEN no configurado.")
+        return
+        
     application = ApplicationBuilder().token(TOKEN).build()
     application.add_handler(CommandHandler('start', start))
-    application.add_handler(CommandHandler('comandos', show_commands))
     application.add_handler(CommandHandler('info', info_cmd))
     application.add_handler(CallbackQueryHandler(show_commands, pattern="show_commands"))
     application.add_handler(CallbackQueryHandler(show_staff, pattern="show_staff"))
@@ -390,6 +399,8 @@ def run_bot():
         fallbacks=[CommandHandler('cancel', lambda u, c: ConversationHandler.END)]
     )
     application.add_handler(report_handler)
+    
+    print("Bot iniciado...")
     application.run_polling()
 
 if __name__ == '__main__':
