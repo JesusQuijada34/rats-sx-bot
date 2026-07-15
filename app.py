@@ -300,7 +300,28 @@ async def moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
 async def post_init(application):
-    logging.info("Bot post-init: Listo.")
+    logging.info("Bot post-init: Iniciando notificación masiva...")
+    
+    msg_reboot = (
+        "🚀 ¡Rats Sx Bot Reiniciado Correctamente! 🔥\n\n"
+        "Se han implementado las siguientes mejoras:\n"
+        "✅ Nuevo diseño visual en /info y Comandos.\n"
+        "✅ Información detallada de reportes pendientes y aprobados.\n"
+        "✅ Historial de nombres mejorado.\n"
+        "✅ Optimización de velocidad y estabilidad.\n\n"
+        "¡Gracias por usar Rats Sx para mantenerte protegido!"
+    )
+    
+    all_users = db.get_all_users()
+    sent_count = 0
+    for user_id in all_users:
+        try:
+            await application.bot.send_message(chat_id=user_id, text=msg_reboot)
+            sent_count += 1
+        except Exception as e:
+            logging.error(f"Error notificando a {user_id}: {e}")
+    
+    logging.info(f"Bot post-init: Notificación enviada a {sent_count} usuarios.")
 
 # --- FLASK ---
 app = Flask(__name__)
