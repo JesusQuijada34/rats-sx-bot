@@ -154,12 +154,25 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target = context.args[0]
     scammer = db.get_scammer(target)
     
+    # Intentar obtener datos reales de Telegram si es posible
+    real_name = "Desconocido"
+    real_username = target if target.startswith("@") else f"@{target}"
+    real_id = "Desconocido"
+    
+    try:
+        chat = await context.bot.get_chat(target)
+        real_name = f"{chat.first_name or ''} {chat.last_name or ''}".strip() or "Sin nombre"
+        real_username = f"@{chat.username}" if chat.username else "Sin username"
+        real_id = chat.id
+    except Exception as e:
+        logging.error(f"Error obteniendo chat de Telegram: {e}")
+
     if not scammer:
         text_not_found = (
             "🔎 INFORMACION DE USUARIO ENCONTRADA\n\n"
-            "🕵️ Nombre: Desconocido\n"
-            f"Usuario: {target}\n"
-            "ID: Desconocido\n\n"
+            f"🕵️ Nombre: {real_name}\n"
+            f"Usuario: {real_username}\n"
+            f"ID: {real_id}\n\n"
             "Estado: ✅ LIBRE\n"
             "⚫️Lista negra: No aprobado ❌\n\n"
             "🟢Reportes aprobados: 0\n"
@@ -175,6 +188,10 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pending_count = db.get_pending_reports_count(user_id)
     name_history = db.get_name_history(user_id)
     
+    # Usar datos de Telegram si los de la DB están vacíos o son "Desconocido"
+    display_name = name if name != "Desconocido" else real_name
+    display_user = f"@{username}" if username != "N/A" else real_username
+    
     status_ban = "🔴 BANEADO" if blacklisted else "✅ LIBRE"
     blacklist_status = "Aprobado ✅" if blacklisted else "No aprobado ❌"
     
@@ -182,8 +199,8 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     response = (
         "🔎 INFORMACION DE USUARIO ENCONTRADA\n\n"
-        f"🕵️ Nombre: {name}\n"
-        f"Usuario: @{username}\n"
+        f"🕵️ Nombre: {display_name}\n"
+        f"Usuario: {display_user}\n"
         f"ID: {user_id}\n\n"
         f"Estado: {status_ban}\n"
         f"⚫️Lista negra: {blacklist_status}\n\n"
