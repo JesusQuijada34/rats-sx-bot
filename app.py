@@ -1,6 +1,7 @@
 import logging
 import os
 import threading
+import asyncio
 from flask import Flask, render_template, send_from_directory
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -97,7 +98,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def show_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
-        "𝙋𝙡𝙖𝙜𝙖 𝙎𝙥𝙖𝙢 𝘾𝙉:\n"
         "🛠️ Comandos de Rats Sx\n\n"
         "Estas son los comandos disponibles del bot:\n\n"
         "🔎 /info\n"
@@ -156,7 +156,6 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not scammer:
         text_not_found = (
-            "𝙋𝙡𝙖𝙜𝙖 𝙎𝙥𝙖𝙢 𝘾𝙉:\n"
             "🔎 INFORMACION DE USUARIO ENCONTRADA\n\n"
             "🕵️ Nombre: Desconocido\n"
             f"Usuario: {target}\n"
@@ -182,7 +181,6 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hist_names = "\n".join([f" • [{d}] {n}" for n, d in name_history[:5]])
     
     response = (
-        "𝙋𝙡𝙖𝙜𝙖 𝙎𝙥𝙖𝙢 𝘾𝙉:\n"
         "🔎 INFORMACION DE USUARIO ENCONTRADA\n\n"
         f"🕵️ Nombre: {name}\n"
         f"Usuario: @{username}\n"
@@ -318,6 +316,8 @@ async def post_init(application):
         try:
             await application.bot.send_message(chat_id=user_id, text=msg_reboot)
             sent_count += 1
+            # Pequeño delay para evitar límites de Telegram
+            await asyncio.sleep(0.05)
         except Exception as e:
             logging.error(f"Error notificando a {user_id}: {e}")
     
