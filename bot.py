@@ -168,30 +168,53 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     scammer = db.get_scammer(target)
     
     if not scammer:
-        await update.message.reply_text("❌ Usuario no encontrado en la base de datos de estafadores.")
+        await update.message.reply_text(
+            "🔎 INFORMACION DE USUARIO\n\n"
+            "⚠️ Este usuario no aparece en la lista de estafadores.\n\n"
+            "Si consideras que es una rata, reporta con /report"
+        )
         return
     
     user_id, name, username, blacklisted = scammer
     reports_count = db.get_reports_count(user_id)
+    pending_count = db.get_pending_reports_count(user_id)
     name_history = db.get_name_history(user_id)
     username_history = db.get_username_history(user_id)
     
-    status = "❌ Registrado en Lista Negra" if blacklisted else "✅ Sin baneos registrados"
+    # Determinar estado
+    if blacklisted:
+        status_text = "⚠️ EN LISTA NEGRA"
+        status_emoji = "🔴"
+    else:
+        status_text = "✅ LIBRE"
+        status_emoji = "🟢"
     
-    hist_names = "\n".join([f"    {i+1}. [{date}] {old_name}" for i, (old_name, date) in enumerate(name_history)])
-    hist_usernames = "\n".join([f"    {i+1}. [{date}] @{old_user}" for i, (old_user, date) in enumerate(username_history)])
+    # Lista negra status
+    blacklist_status = "⚫️ Lista negra: Aprobado ✅" if blacklisted else "⚫️ Lista negra: No aprobado ❌"
+    
+    # Construir historial de nombres
+    if name_history:
+        hist_names = "\n".join([f"    • [{date}] {old_name}" for i, (old_name, date) in enumerate(name_history[:5])])
+    else:
+        hist_names = "    Sin cambios de nombre registrados"
+    
+    # Construir historial de usernames
+    if username_history:
+        hist_usernames = "\n".join([f"    • [{date}] @{old_user}" for i, (old_user, date) in enumerate(username_history[:5])])
+    else:
+        hist_usernames = "    Sin cambios de username registrados"
     
     response = (
-        "📌 Información del Usuario\n"
-        f"👤 ID: {user_id}\n"
-        f"🔹 Nombre actual: {name}\n"
-        f"🔗 Username actual: @{username}\n\n"
-        "🛡 Lista negra\n"
-        f"{status}\n\n"
-        "📊 Reportes\n"
-        f"📋 {reports_count if reports_count > 0 else 'Sin reportes registrados'}\n\n"
-        f"📝 Historial de Nombres:\n{hist_names if hist_names else '    Sin historial'}\n\n"
-        f"📝 Historial de Usernames:\n{hist_usernames if hist_usernames else '    Sin historial'}"
+        f"(@{username}) 🔎 INFORMACION DE USUARIO ENCONTRADA\n\n"
+        f"🕵️ Nombre: {name}\n"
+        f"👤 Usuario: @{username}\n"
+        f"🆔 ID: {user_id}\n\n"
+        f"{status_emoji} Estado: {status_text}\n"
+        f"{blacklist_status}\n\n"
+        f"🟢 Reportes aprobados: {reports_count if reports_count > 0 else '0'}\n"
+        f"⏰ Reportes pendientes: {pending_count if pending_count > 0 else '0'}\n\n"
+        f"📝 Historial de cambios de nombres:\n{hist_names}\n\n"
+        f"📝 Historial de cambios de usernames:\n{hist_usernames}"
     )
     await update.message.reply_text(response)
 
@@ -233,6 +256,24 @@ async def get_pruebas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['foto_id'] = update.message.photo[-1].file_id
     context.user_data['reporter_name'] = update.effective_user.username or update.effective_user.first_name
     context.user_data['reporter_id'] = update.effective_user.id
+    
+    # Guardar reporte pendiente en la base de datos
+    rata_id = context.user_data['rata_id']
+    rata_username = rata_id.replace("@", "") if not rata_id.isdigit() else "N/A"
+    rata_id_int = int(rata_id) if rata_id.isdigit() else 0
+    
+    try:
+        db.add_pending_report(
+            scammer_id=rata_id_int,
+            scammer_username=rata_username,
+            scammer_name="Desconocido",
+            context=context.user_data['contexto'],
+            bank_details=context.user_data['banca'],
+            reporter_id=context.user_data['reporter_id'],
+            proof_photo_id=context.user_data['foto_id']
+        )
+    except Exception as e:
+        logging.error(f"Error guardando reporte pendiente: {e}")
     
     admin_text = (
         "🔔 NUEVO REPORTE PARA MODERACIÓN\n\n"
