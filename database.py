@@ -40,7 +40,7 @@ class Database:
             )
         """)
         
-        # Tabla de reportes
+        # Tabla de reportes (aprobados)
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS reports (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,6 +53,23 @@ class Database:
                 created_at TEXT
             )
         """)
+        
+        # Tabla de reportes pendientes
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS pending_reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scammer_id INTEGER,
+                scammer_username TEXT,
+                scammer_name TEXT,
+                context TEXT,
+                bank_details TEXT,
+                reporter_id INTEGER,
+                proof_photo_id TEXT,
+                created_at TEXT,
+                status TEXT DEFAULT 'pending'
+            )
+        """)
+        
         self.conn.commit()
 
     def get_scammer(self, identifier):
@@ -75,6 +92,20 @@ class Database:
     def get_username_history(self, user_id):
         self.cursor.execute("SELECT old_username, change_date FROM username_history WHERE user_id = ? ORDER BY id DESC", (user_id,))
         return self.cursor.fetchall()
+
+    def get_pending_reports_count(self, user_id):
+        self.cursor.execute("SELECT COUNT(*) FROM pending_reports WHERE scammer_id = ? AND status = 'pending'", (user_id,))
+        return self.cursor.fetchone()[0]
+
+    def add_pending_report(self, scammer_id, scammer_username, scammer_name, context, bank_details, reporter_id, proof_photo_id):
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.cursor.execute("""
+            INSERT INTO pending_reports 
+            (scammer_id, scammer_username, scammer_name, context, bank_details, reporter_id, proof_photo_id, created_at, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+        """, (scammer_id, scammer_username, scammer_name, context, bank_details, reporter_id, proof_photo_id, now))
+        self.conn.commit()
+        return self.cursor.lastrowid
 
     def add_report(self, scammer_id, name, username, context, bank_details, reporter_id, approver_id, proof_photo_id):
         # Check if scammer exists
