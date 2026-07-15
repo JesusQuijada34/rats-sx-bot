@@ -1,15 +1,13 @@
-🚀 NOTAS DE ACTUALIZACIÓN - RATS SX
+# 🚀 NOTAS DE ACTUALIZACIÓN - RATS SX
 
-🆕 Novedades:
-- Nuevo formato para el comando /info con información detallada del usuario
-- Sistema de reportes pendientes implementado
-- Registro automático de usuarios que usan el bot
-- Notifications de actualización al iniciar el bot
+### [v1.2.0] - 2026-07-15
+- **Inteligencia Real-Time**: El comando `/info` ahora consulta la API de Telegram para obtener nombres e IDs en tiempo real si no están en la base de datos.
+- **Notificaciones Selectivas**: El bot ahora notifica solo a los administradores al reiniciarse para evitar spam.
+- **Limpieza Visual**: Se eliminaron textos innecesarios y se pulió el diseño de los mensajes.
+- **Estabilidad**: Optimización del sistema de envío de mensajes para evitar bloqueos de Telegram.
 
-📋 Nuevo formato /info:
-- Muestra estado: 🟢 LIBRE o 🔴 EN LISTA NEGRA
-- Reportes aprobados y pendientes
-- Historial de cambios de nombres y usernames
-
-💡 Recuerda:
-Usa /info ID o /info @usuario para consultar usuarios. Reporta con /report si encuentras una rata. ¡No caigas en estafas!
+### [v1.1.0] - 2026-07-15
+- **Nuevo Diseño Visual**: Actualización completa de `/info` y el menú de comandos.
+- **Reportes Detallados**: Ahora se muestran reportes pendientes y aprobados por usuario.
+- **Unificación de Servidor**: Integración de Flask y Bot en un solo proceso para Render.
+- **Corrección de Conflictos**: Eliminación de instancias duplicadas que causaban errores de conexión.

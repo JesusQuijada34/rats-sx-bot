@@ -146,6 +146,15 @@ async def show_staff(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(text)
 
+async def release_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        with open("releases.md", "r", encoding="utf-8") as f:
+            text = f.read()
+        await update.message.reply_text(text)
+    except Exception as e:
+        await update.message.reply_text("No se pudieron cargar las notas de actualización.")
+        logging.error(f"Error en /release: {e}")
+
 async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Uso: /info 123456789 o /info @usuario")
@@ -315,30 +324,26 @@ async def moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
 async def post_init(application):
-    logging.info("Bot post-init: Iniciando notificación masiva...")
+    logging.info("Bot post-init: Iniciando notificación de reinicio...")
     
-    msg_reboot = (
-        "🚀 ¡Rats Sx Bot Reiniciado Correctamente! 🔥\n\n"
-        "Se han implementado las siguientes mejoras:\n"
-        "✅ Nuevo diseño visual en /info y Comandos.\n"
-        "✅ Información detallada de reportes pendientes y aprobados.\n"
-        "✅ Historial de nombres mejorado.\n"
-        "✅ Optimización de velocidad y estabilidad.\n\n"
-        "¡Gracias por usar Rats Sx para mantenerte protegido!"
-    )
-    
+    try:
+        with open("releases.md", "r", encoding="utf-8") as f:
+            notes = f.read()
+    except:
+        notes = "🚀 Rats Sx Bot se ha reiniciado correctamente."
+
     # Notificar solo a administradores y al dueño
     admins_to_notify = get_all_admins()
     sent_count = 0
     for admin_id in admins_to_notify:
         try:
-            await application.bot.send_message(chat_id=admin_id, text=msg_reboot)
+            await application.bot.send_message(chat_id=admin_id, text=notes)
             sent_count += 1
             await asyncio.sleep(0.1)
         except Exception as e:
             logging.error(f"Error notificando al admin {admin_id}: {e}")
     
-    logging.info(f"Bot post-init: Notificación enviada a {sent_count} usuarios.")
+    logging.info(f"Bot post-init: Notificación enviada a {sent_count} administradores.")
 
 # --- FLASK ---
 app = Flask(__name__)
@@ -361,6 +366,7 @@ def run_bot():
     
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler('info', info_cmd))
+    application.add_handler(CommandHandler('release', release_cmd))
     application.add_handler(CallbackQueryHandler(show_commands, pattern="show_commands"))
     application.add_handler(CallbackQueryHandler(show_staff, pattern="show_staff"))
     application.add_handler(CallbackQueryHandler(moderation, pattern="^(appr|rejc)_"))
