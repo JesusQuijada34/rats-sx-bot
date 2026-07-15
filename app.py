@@ -310,16 +310,16 @@ async def post_init(application):
         "¡Gracias por usar Rats Sx para mantenerte protegido!"
     )
     
-    all_users = db.get_all_users()
+    # Notificar solo a administradores y al dueño
+    admins_to_notify = get_all_admins()
     sent_count = 0
-    for user_id in all_users:
+    for admin_id in admins_to_notify:
         try:
-            await application.bot.send_message(chat_id=user_id, text=msg_reboot)
+            await application.bot.send_message(chat_id=admin_id, text=msg_reboot)
             sent_count += 1
-            # Pequeño delay para evitar límites de Telegram
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.1)
         except Exception as e:
-            logging.error(f"Error notificando a {user_id}: {e}")
+            logging.error(f"Error notificando al admin {admin_id}: {e}")
     
     logging.info(f"Bot post-init: Notificación enviada a {sent_count} usuarios.")
 
