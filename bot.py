@@ -63,11 +63,19 @@ logging.basicConfig(
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    user_mention = f"@{user.username}" if user.username else user.first_name
     welcome_text = (
-        f"Bienvenido @{user.username if user.username else user.first_name} a Rats Sx\n"
-        "Este bot está diseñado para que busques los usuarios de los estafadores y no caigas\n"
-        "Para obtener informacion de un usuario quemado dentro de nuestro bot /info Id o Usuario\n"
-        "Añade ah Rats Sx Ah tu grupo presionando el bot de añadir ah Rats Sx ah mi grupo"
+        f"🐀 ¡Bienvenido, {user_mention}, a Rats Sx! 🔥\n\n"
+        "Este bot está diseñado para ayudarte a identificar usuarios reportados por estafas y evitar que caigas en fraudes.\n\n"
+        "🔎 ¿Cómo consultar un usuario?\n"
+        "Usa el siguiente comando:\n"
+        "/info ID\n"
+        "o\n"
+        "/info @usuario\n\n"
+        "El bot te mostrará si ese usuario ha sido reportado dentro de nuestra base de datos.\n\n"
+        "➕ ¿Quieres proteger tu grupo?\n"
+        "Presiona el botón “Añadir a Rats Sx a mi grupo” para agregar el bot y permitir que todos los miembros puedan realizar consultas de forma rápida y sencilla.\n\n"
+        "⚠️ Recuerda: verifica siempre antes de realizar cualquier compra o trato."
     )
     
     keyboard = [
@@ -261,6 +269,38 @@ async def get_pruebas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Reporte enviado a moderación. Se te notificará el resultado.")
     return ConversationHandler.END
 
+async def post_init(application):
+    """Función que se ejecuta al iniciar el bot para notificar el estado y las notas de lanzamiento."""
+    release_notes_path = "/home/ubuntu/rats-sx-bot/releases.md"
+    notes = "🚀 El bot de Rats Sx ya está funcionando.\n\n"
+    
+    if os.path.exists(release_notes_path):
+        with open(release_notes_path, "r", encoding="utf-8") as f:
+            notes += f.read()
+    else:
+        notes += "No se encontraron notas de lanzamiento recientes."
+
+    # Notificar al dueño y administradores
+    admins = []
+    if OWNER_ID:
+        admins.append(OWNER_ID)
+    for aid in ADMIN_IDS:
+        if aid not in admins:
+            admins.append(aid)
+
+    for admin_id in admins:
+        try:
+            # Convertir Markdown básico de MD a formato soportado por Telegram (HTML es más flexible aquí)
+            # Para simplicidad, enviaremos el texto tal cual, ya que Telegram soporta MarkdownV2 o HTML.
+            # Usaremos HTML para mayor compatibilidad con el archivo MD si lo formateamos un poco.
+            await application.bot.send_message(
+                chat_id=admin_id, 
+                text=notes,
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            logging.error(f"No se pudo enviar notificación de inicio al admin {admin_id}: {e}")
+
 async def moderation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = update.effective_user.id
@@ -368,7 +408,7 @@ def main():
         print("Error: No se ha proporcionado TELEGRAM_TOKEN en las variables de entorno.")
         return
 
-    application = ApplicationBuilder().token(TOKEN).build()
+    application = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
     
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('Report', start_report)],
