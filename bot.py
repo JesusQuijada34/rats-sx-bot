@@ -290,13 +290,10 @@ async def post_init(application):
 
     for admin_id in admins:
         try:
-            # Convertir Markdown básico de MD a formato soportado por Telegram (HTML es más flexible aquí)
-            # Para simplicidad, enviaremos el texto tal cual, ya que Telegram soporta MarkdownV2 o HTML.
-            # Usaremos HTML para mayor compatibilidad con el archivo MD si lo formateamos un poco.
             await application.bot.send_message(
                 chat_id=admin_id, 
                 text=notes,
-                parse_mode='Markdown'
+                parse_mode=None
             )
         except Exception as e:
             logging.error(f"No se pudo enviar notificación de inicio al admin {admin_id}: {e}")

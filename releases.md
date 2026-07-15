@@ -1,12 +1,12 @@
-# 🚀 Notas de Lanzamiento - Rats Sx Bot
+🚀 NOTAS DE ACTUALIZACIÓN - RATS SX
 
-### 🆕 Novedades
-- **Nuevo mensaje de bienvenida:** Se ha rediseñado el comando `/start` para ofrecer una mejor experiencia y claridad en las instrucciones.
-- **Sistema de Notas de Versión:** Ahora el bot notificará automáticamente las novedades al iniciarse.
+Novedades:
+- Se ha rediseñado el mensaje de bienvenida (/start) para ser más claro y profesional.
+- Implementado sistema de notificaciones automáticas al iniciar el bot.
 
-### 🛠 Mejoras
-- Optimización en la visualización de menciones de usuario.
-- Mejora en la estructura de los botones interactivos.
+Mejoras:
+- Optimización en la detección de nombres de usuario y menciones.
+- Estructura de botones mejorada para facilitar el acceso al canal y grupo.
 
-### ⚠️ Recordatorio
-- Siempre verifica la identidad de los usuarios antes de realizar transacciones. Usa `/info` para consultar nuestra base de datos.
+Recuerda:
+Usa /info para verificar usuarios. ¡No caigas en estafas!
