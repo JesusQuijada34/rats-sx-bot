@@ -70,10 +70,19 @@ class Database:
             )
         """)
         
+        # Tabla de usuarios
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id INTEGER PRIMARY KEY,
+                username TEXT,
+                first_name TEXT,
+                last_seen TEXT
+            )
+        """)
+        
         self.conn.commit()
 
     def get_scammer(self, identifier):
-        # identifier can be ID or username
         if isinstance(identifier, int) or identifier.isdigit():
             self.cursor.execute("SELECT * FROM scammers WHERE user_id = ?", (identifier,))
         else:
@@ -108,17 +117,14 @@ class Database:
         return self.cursor.lastrowid
 
     def add_report(self, scammer_id, name, username, context, bank_details, reporter_id, approver_id, proof_photo_id):
-        # Check if scammer exists
         self.cursor.execute("SELECT name, username FROM scammers WHERE user_id = ?", (scammer_id,))
         existing = self.cursor.fetchone()
-        
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         if not existing:
             self.cursor.execute("INSERT INTO scammers (user_id, name, username, blacklisted) VALUES (?, ?, ?, 1)", 
                                (scammer_id, name, username))
         else:
-            # Update and log history if changed
             if existing[0] != name:
                 self.cursor.execute("INSERT INTO name_history (user_id, old_name, change_date) VALUES (?, ?, ?)", 
                                    (scammer_id, existing[0], now))
@@ -139,5 +145,18 @@ class Database:
         report_id = self.cursor.lastrowid
         self.conn.commit()
         return report_id
+
+    # --- Gestión de usuarios ---
+    def add_user(self, user_id, username, first_name):
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.cursor.execute("""
+            INSERT OR REPLACE INTO users (user_id, username, first_name, last_seen)
+            VALUES (?, ?, ?, ?)
+        """, (user_id, username, first_name, now))
+        self.conn.commit()
+    
+    def get_all_users(self):
+        self.cursor.execute("SELECT user_id FROM users")
+        return [row[0] for row in self.cursor.fetchall()]
 
 db = Database()

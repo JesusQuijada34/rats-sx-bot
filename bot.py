@@ -63,6 +63,13 @@ logging.basicConfig(
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    
+    # Guardar usuario en la base de datos
+    try:
+        db.add_user(user.id, user.username, user.first_name)
+    except Exception as e:
+        logging.error(f"Error guardando usuario: {e}")
+    
     user_mention = f"@{user.username}" if user.username else user.first_name
     welcome_text = (
         f"🐀 ¡Bienvenido, {user_mention}, a Rats Sx! 🔥\n\n"
@@ -311,9 +318,9 @@ async def get_pruebas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def post_init(application):
-    """Función que se ejecuta al iniciar el bot para notificar el estado y las notas de lanzamiento."""
-    release_notes_path = "/home/ubuntu/rats-sx-bot/releases.md"
-    notes = "🚀 El bot de Rats Sx ya está funcionando.\n\n"
+    """Función que se ejecuta al iniciar el bot para notificar el estado y las notas de lanzamiento a todos los usuarios."""
+    release_notes_path = "releases.md"
+    notes = "🚀 NOTAS DE ACTUALIZACIÓN - RATS SX\n\n"
     
     if os.path.exists(release_notes_path):
         with open(release_notes_path, "r", encoding="utf-8") as f:
@@ -321,23 +328,25 @@ async def post_init(application):
     else:
         notes += "No se encontraron notas de lanzamiento recientes."
 
-    # Notificar al dueño y administradores
-    admins = []
-    if OWNER_ID:
-        admins.append(OWNER_ID)
-    for aid in ADMIN_IDS:
-        if aid not in admins:
-            admins.append(aid)
-
-    for admin_id in admins:
+    # Obtener todos los usuarios registrados
+    all_users = db.get_all_users()
+    
+    # Notificar a todos los usuarios
+    sent_count = 0
+    failed_count = 0
+    
+    for user_id in all_users:
         try:
             await application.bot.send_message(
-                chat_id=admin_id, 
-                text=notes,
-                parse_mode=None
+                chat_id=user_id, 
+                text=notes
             )
+            sent_count += 1
         except Exception as e:
-            logging.error(f"No se pudo enviar notificación de inicio al admin {admin_id}: {e}")
+            failed_count += 1
+            logging.error(f"No se pudo enviar notificación al usuario {user_id}: {e}")
+    
+    logging.info(f"Notificaciones enviadas: {sent_count}, fallidas: {failed_count}")
 
 async def moderation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
