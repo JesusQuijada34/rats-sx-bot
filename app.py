@@ -97,8 +97,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def show_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
-        "/info [ID/@usuario] - Consultar usuario\n"
-        "/report - Iniciar reporte de estafa"
+        "𝙋𝙡𝙖𝙜𝙖 𝙎𝙥𝙖𝙢 𝘾𝙉:\n"
+        "🛠️ Comandos de Rats Sx\n\n"
+        "Estas son los comandos disponibles del bot:\n\n"
+        "🔎 /info\n"
+        "Consulta información sobre un usuario reportado.\n"
+        "Solo escribe:\n"
+        "/info ID\n"
+        "/info @usuario\n\n"
+        "📝 /report\n"
+        "Envía un reporte (funa) de un usuario.\n\n"
+        "Tu reporte será revisado por un administrador y, si es aprobado, se agregará a la base de datos del bot y se publicará en el canal oficial de Rats Sx\n\n"
+        "⚠️ Usa estas herramientas de forma responsable y proporciona evidencia cuando realices un reporte para facilitar su revisión."
     )
     query = update.callback_query
     if query:
@@ -145,26 +155,44 @@ async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     scammer = db.get_scammer(target)
     
     if not scammer:
-        await update.message.reply_text("🔎 No se encontró información de este usuario.")
+        text_not_found = (
+            "𝙋𝙡𝙖𝙜𝙖 𝙎𝙥𝙖𝙢 𝘾𝙉:\n"
+            "🔎 INFORMACION DE USUARIO ENCONTRADA\n\n"
+            "🕵️ Nombre: Desconocido\n"
+            f"Usuario: {target}\n"
+            "ID: Desconocido\n\n"
+            "Estado: ✅ LIBRE\n"
+            "⚫️Lista negra: No aprobado ❌\n\n"
+            "🟢Reportes aprobados: 0\n"
+            "⏰Reportes pendientes: 0\n\n"
+            "Historial de cambios de nombres\n"
+            "Sin historial"
+        )
+        await update.message.reply_text(text_not_found)
         return
     
     user_id, name, username, blacklisted = scammer
     reports_count = db.get_reports_count(user_id)
+    pending_count = db.get_pending_reports_count(user_id)
     name_history = db.get_name_history(user_id)
-    username_history = db.get_username_history(user_id)
     
-    status = "🔴 EN LISTA NEGRA" if blacklisted else "🟢 LIBRE"
+    status_ban = "🔴 BANEADO" if blacklisted else "✅ LIBRE"
+    blacklist_status = "Aprobado ✅" if blacklisted else "No aprobado ❌"
     
     hist_names = "\n".join([f" • [{d}] {n}" for n, d in name_history[:5]])
-    hist_usernames = "\n".join([f" • [{d}] @{u}" for u, d in username_history[:5]])
     
     response = (
-        f"📌 INFORMACIÓN: @{username}\n"
-        f"👤 ID: {user_id} | Nombre: {name}\n"
-        f"🛡 Estado: {status}\n"
-        f"📋 Reportes: {reports_count}\n\n"
-        f"📝 Historial Nombres:\n{hist_names if hist_names else ' Sin historial'}\n\n"
-        f"📝 Historial Usernames:\n{hist_usernames if hist_usernames else ' Sin historial'}"
+        "𝙋𝙡𝙖𝙜𝙖 𝙎𝙥𝙖𝙢 𝘾𝙉:\n"
+        "🔎 INFORMACION DE USUARIO ENCONTRADA\n\n"
+        f"🕵️ Nombre: {name}\n"
+        f"Usuario: @{username}\n"
+        f"ID: {user_id}\n\n"
+        f"Estado: {status_ban}\n"
+        f"⚫️Lista negra: {blacklist_status}\n\n"
+        f"🟢Reportes aprobados: {reports_count}\n"
+        f"⏰Reportes pendientes: {pending_count}\n\n"
+        f"Historial de cambios de nombres\n"
+        f"{hist_names if hist_names else 'Sin historial'}"
     )
     await update.message.reply_text(response)
 
@@ -201,6 +229,19 @@ async def get_pruebas(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'reporter_id': update.effective_user.id,
         'reporter_name': update.effective_user.username or update.effective_user.first_name
     }
+    
+    # Guardar reporte pendiente en la DB
+    rata_id_val = data['rata_id'] if data['rata_id'].isdigit() else 0
+    rata_user = data['rata_id'].replace("@", "") if not data['rata_id'].isdigit() else "N/A"
+    db.add_pending_report(
+        scammer_id=rata_id_val,
+        scammer_username=rata_user,
+        scammer_name="Desconocido",
+        context=data['contexto'],
+        bank_details=data['banca'],
+        reporter_id=data['reporter_id'],
+        proof_photo_id=data['foto_id']
+    )
     
     context.bot_data[f"rep_{update.effective_user.id}"] = data
     admin_kb = [[InlineKeyboardButton("✅ Aprobar", callback_data=f"appr_{update.effective_user.id}"),
